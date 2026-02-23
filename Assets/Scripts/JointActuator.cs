@@ -11,7 +11,7 @@ public class ArticulationJointActuator : MonoBehaviour
 
     [Header("Speed mapping")]
     [Tooltip("Interpret speed like 0..100 -> deg/s via: degPerSec = max(minDegPerSec, speed * speedScale)")]
-    public float speedScale = 1.2f;
+    public float speedScale = 1.5f;
     public float minDegPerSec = 8f;
 
     private ArticulationBody _ab;

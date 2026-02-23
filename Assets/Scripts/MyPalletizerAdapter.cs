@@ -22,18 +22,15 @@ public class MyPalletizerArticulationAdapter : MonoBehaviour
             _runner = StartCoroutine(RunQueue());
     }
 
+    // In MyPalletizerArticulationAdapter.cs
     public void SendAngle(int joint1Based, float angleDeg, float speed)
     {
         var j = GetJoint(joint1Based);
-        if (j == null) { Debug.LogWarning($"Invalid joint {joint1Based}"); return; }
+        if (j == null) return;
 
-        if (!useQueue)
-        {
-            j.MoveToAsync(angleDeg, speed);
-            return;
-        }
-
-        _queue.Enqueue(j.MoveTo(angleDeg, speed));
+        // Für Echtzeit-Streaming aus Python (Virtual Mode) 
+        // nutzen wir besser MoveToAsync, damit alle Gelenke gleichzeitig starten
+        j.MoveToAsync(angleDeg, speed);
     }
 
     public void Wait(float seconds)
