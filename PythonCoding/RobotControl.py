@@ -61,13 +61,30 @@ class RobotControl:
             }
             self.sock.sendto(json.dumps(data).encode(), (self.udp_ip, self.udp_port))
 
+    def set_led(self, r, g, b):
+        # 1. Echte Hardware
+        if self.mode in ["real", "both"] and self.mc:
+            self.mc.set_color(r, g, b)
+
+        # 2. Unity Simulation
+        if self.mode in ["virtual", "both"] and self.sock:
+            data = {
+                "type": "led",  # Markierung für Unity
+                "r": int(r),
+                "g": int(g),
+                "b": int(b)
+            }
+            self.sock.sendto(json.dumps(data).encode(), (self.udp_ip, self.udp_port))
+
 
 # --- Test-Skript ---
+# --- Test-Skript ---
 if __name__ == "__main__":
-    # "both" bewirkt nun die gleichzeitige Steuerung
     bot = RobotControl(mode="both", port="COM7")
 
     print("Starte synchronisierte Bewegung...")
+
+    # Nur Koordinaten-Listen in die Liste packen!
     test_points = [
         [0, 0, 0, 0],
         [90, 0, 0, 0],
@@ -77,6 +94,16 @@ if __name__ == "__main__":
         [0, 0, 0, 0]
     ]
 
-    for p in test_points:
+    # Farben-Liste (optional, um sie mit den Punkten zu synchronisieren)
+    colors = [(0, 255, 0), (0, 0, 255), (255, 0, 0), (255, 255, 0), (0, 255, 255), (255, 255, 255)]
+
+    for i, p in enumerate(test_points):
+        # Farbe ändern (wir nehmen die Farbe passend zum Punkt)
+        r, g, b = colors[i % len(colors)]
+        bot.set_led(r, g, b)
+
+        # Bewegung ausführen
+        print(f"Fahre zu Punkt {i + 1}: {p} mit Farbe RGB({r},{g},{b})")
         bot.move_joints(p, 40)
-        time.sleep(4)  # Wichtig, damit Hardware hinterherkommt
+
+        time.sleep(4)

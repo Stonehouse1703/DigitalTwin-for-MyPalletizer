@@ -17,22 +17,26 @@ public class UnityUdpBridge : MonoBehaviour
     private UdpClient _udpClient;
     private Thread _receiveThread;
     
-    // Da Unity-Funktionen (Coroutinen) nur im Main-Thread laufen dürfen, 
-    // speichern wir Befehle zwischen.
     private readonly Queue<RobotCommand> _commandQueue = new();
     private readonly object _lock = new object();
 
+    // 1. Die Datenstruktur für das JSON-Parsing
     [Serializable]
     public class RobotData
     {
+        public string type;
         public float j1, j2, j3, j4;
         public float speed;
+        public int r, g, b;
     }
 
+    // 2. Die interne Struktur für die Warteschlange (HIER lagen die Fehler)
     private struct RobotCommand
     {
-        public float[] angles;
+        public string type;
+        public float j1, j2, j3, j4;
         public float speed;
+        public int r, g, b;
     }
 
     void Start()
@@ -55,15 +59,21 @@ public class UnityUdpBridge : MonoBehaviour
                 byte[] data = _udpClient.Receive(ref anyIP);
                 string text = Encoding.UTF8.GetString(data);
 
-                // JSON parsen
                 RobotData robotData = JsonUtility.FromJson<RobotData>(text);
 
-                // In Thread-sichere Queue schieben
                 lock (_lock)
                 {
+                    // Wir übertragen alle Werte in das Command-Objekt
                     _commandQueue.Enqueue(new RobotCommand {
-                        angles = new float[] { robotData.j1, robotData.j2, robotData.j3, robotData.j4 },
-                        speed = robotData.speed
+                        type = robotData.type,
+                        j1 = robotData.j1,
+                        j2 = robotData.j2,
+                        j3 = robotData.j3,
+                        j4 = robotData.j4,
+                        speed = robotData.speed,
+                        r = robotData.r,
+                        g = robotData.g,
+                        b = robotData.b
                     });
                 }
             }
@@ -76,23 +86,31 @@ public class UnityUdpBridge : MonoBehaviour
 
     void Update()
     {
-        // Im Main-Thread die Befehle an den Adapter weiterreichen
         lock (_lock)
         {
             while (_commandQueue.Count > 0)
             {
                 var cmd = _commandQueue.Dequeue();
-                ExecuteOnAdapter(cmd);
+                
+                // Entscheidung: LED oder Bewegung?
+                if (cmd.type == "led")
+                {
+                    // Nutze die moderne Methode FindFirstObjectByType (behebt die Warnung)
+                    var ledScript = UnityEngine.Object.FindFirstObjectByType<RobotLEDController>();
+                    if (ledScript != null)
+                    {
+                        ledScript.SetLEDColor(cmd.r, cmd.g, cmd.b);
+                    }
+                }
+                else
+                {
+                    // Bewegung ausführen
+                    adapter.SendAngle(1, cmd.j1, cmd.speed);
+                    adapter.SendAngle(2, cmd.j2, cmd.speed);
+                    adapter.SendAngle(3, cmd.j3, cmd.speed);
+                    adapter.SendAngle(4, cmd.j4, cmd.speed);
+                }
             }
-        }
-    }
-
-    private void ExecuteOnAdapter(RobotCommand cmd)
-    {
-        // Wir senden alle 4 Winkel an deinen Adapter
-        for (int i = 0; i < 4; i++)
-        {
-            adapter.SendAngle(i + 1, cmd.angles[i], cmd.speed);
         }
     }
 
