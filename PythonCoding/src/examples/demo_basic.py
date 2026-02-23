@@ -1,6 +1,6 @@
 ﻿import mypalletizer
 
-from src.mypalletizer import Robot
+from src.mypalletizer import Robot, RobotMode
 
 
 def main():
@@ -11,7 +11,7 @@ def main():
     # robot = Robot.connect(port="COM7")
 
     # 3) Beides
-    with Robot.both(port="COM7") as robot:
+    with Robot(mode=RobotMode.VIRTUAL, port="COM7") as robot:
         robot.set_color(0, 255, 0)
         robot.move_joints(0, 0, 0, 0, speed=40)
         robot.sleep(3)

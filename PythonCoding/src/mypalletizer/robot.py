@@ -1,52 +1,62 @@
 ﻿from __future__ import annotations
 from dataclasses import dataclass
-from typing import Literal, Optional
+from enum import Enum
+from typing import Optional
 
 from .controller import MyPalletizerController
 from .errors import InvalidConfigError
 
-Mode = Literal["virtual", "real", "both"]
+
+class RobotMode(str, Enum):
+    VIRTUAL = "virtual"
+    REAL = "real"
+    BOTH = "both"
 
 
 @dataclass(frozen=True)
 class RobotConfig:
-    mode: Mode
-    port: Optional[str] = None          # z.B. "COM7" / "/dev/ttyUSB0"
+    mode: RobotMode
+    port: Optional[str] = None
     ip: str = "127.0.0.1"
     udp_port: int = 5005
     baudrate: int = 115200
 
 
 class Robot:
+    """
+    Student-facing API.
+    """
 
-    def __init__(self, config: RobotConfig):
-        self.config = config
+    def __init__(
+        self,
+        *,
+        mode: RobotMode,
+        port: Optional[str] = None,
+        ip: str = "127.0.0.1",
+        udp_port: int = 5005,
+        baudrate: int = 115200,
+    ):
+        config = RobotConfig(
+            mode=mode,
+            port=port,
+            ip=ip,
+            udp_port=udp_port,
+            baudrate=baudrate,
+        )
+
         self._validate(config)
+        self.config = config
+
         self._impl = MyPalletizerController(
-            mode=config.mode,
+            mode=config.mode.value,   # Enum → string
             port=config.port,
             ip=config.ip,
             udp_port=config.udp_port,
             baudrate=config.baudrate,
         )
 
-    # --------- constructors ----------
-    @classmethod
-    def connect(cls, port: str, *, baudrate: int = 115200) -> "Robot":
-        """Real robot only."""
-        return cls(RobotConfig(mode="real", port=port, baudrate=baudrate))
+    # ---------------- API ----------------
 
-    @classmethod
-    def sim(cls, *, ip: str = "127.0.0.1", udp_port: int = 5005) -> "Robot":
-        """Unity simulation only."""
-        return cls(RobotConfig(mode="virtual", ip=ip, udp_port=udp_port))
-
-    @classmethod
-    def both(cls, port: str, *, ip: str = "127.0.0.1", udp_port: int = 5005, baudrate: int = 115200) -> "Robot":
-        """Real + Unity."""
-        return cls(RobotConfig(mode="both", port=port, ip=ip, udp_port=udp_port, baudrate=baudrate))
-
-    # --------- API ----------
     def move_joints(self, j1: float, j2: float, j3: float, j4: float, speed: int = 40):
         self._impl.move_joints(j1, j2, j3, j4, speed=speed)
 
@@ -67,10 +77,14 @@ class Robot:
         self.close()
         return False
 
-    # --------- Validation ----------
+    # ---------------- Validation ----------------
+
     @staticmethod
     def _validate(cfg: RobotConfig):
-        if cfg.mode in ("real", "both") and not cfg.port:
-            raise InvalidConfigError("Mode 'real' or 'both' requires a serial port (e.g., port='COM7').")
-        if cfg.udp_port <= 0 or cfg.udp_port > 65535:
+        if cfg.mode in (RobotMode.REAL, RobotMode.BOTH) and not cfg.port:
+            raise InvalidConfigError(
+                "Mode REAL or BOTH requires a serial port (e.g. port='COM7')."
+            )
+
+        if not (1 <= cfg.udp_port <= 65535):
             raise InvalidConfigError("udp_port must be in range 1..65535.")
