@@ -10,6 +10,9 @@ public class UnityUdpBridge : MonoBehaviour
 {
     [Header("Networking")]
     public int port = 5005;
+    
+    [Header("LED Controller")]
+    public RobotLEDController ledController;  // im Inspector zuweisen
 
     [Header("Robot Reference")]
     public MyPalletizerArticulationAdapter adapter;
@@ -46,6 +49,9 @@ public class UnityUdpBridge : MonoBehaviour
         _receiveThread = new Thread(ReceiveData) { IsBackground = true };
         _receiveThread.Start();
         Debug.Log($"UDP Bridge gestartet auf Port {port}");
+        
+        if (ledController == null)
+            ledController = FindFirstObjectByType<RobotLEDController>();
     }
 
     private void ReceiveData()
@@ -58,6 +64,7 @@ public class UnityUdpBridge : MonoBehaviour
                 IPEndPoint anyIP = new IPEndPoint(IPAddress.Any, 0);
                 byte[] data = _udpClient.Receive(ref anyIP);
                 string text = Encoding.UTF8.GetString(data);
+                Debug.Log("UDP RAW: " + text);
 
                 RobotData robotData = JsonUtility.FromJson<RobotData>(text);
 
@@ -81,6 +88,7 @@ public class UnityUdpBridge : MonoBehaviour
             {
                 Debug.LogWarning("UDP Receive Error: " + e.Message);
             }
+
         }
     }
 
@@ -95,20 +103,24 @@ public class UnityUdpBridge : MonoBehaviour
                 // Entscheidung: LED oder Bewegung?
                 if (cmd.type == "led")
                 {
-                    // Nutze die moderne Methode FindFirstObjectByType (behebt die Warnung)
-                    var ledScript = UnityEngine.Object.FindFirstObjectByType<RobotLEDController>();
-                    if (ledScript != null)
+                    if (cmd.type == "led")
                     {
-                        ledScript.SetLEDColor(cmd.r, cmd.g, cmd.b);
+                        if (ledController != null)
+                            ledController.SetLEDColor(cmd.r, cmd.g, cmd.b);
+                        else
+                            Debug.LogWarning("No RobotLEDController found in scene!");
                     }
                 }
-                else
+                else if (cmd.type == "move")
                 {
-                    // Bewegung ausführen
                     adapter.SendAngle(1, cmd.j1, cmd.speed);
                     adapter.SendAngle(2, cmd.j2, cmd.speed);
                     adapter.SendAngle(3, cmd.j3, cmd.speed);
                     adapter.SendAngle(4, cmd.j4, cmd.speed);
+                }
+                else
+                {
+                    Debug.LogWarning($"Unknown command type: '{cmd.type}'");
                 }
             }
         }

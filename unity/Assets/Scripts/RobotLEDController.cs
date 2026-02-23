@@ -7,9 +7,9 @@ public class RobotLEDController : MonoBehaviour
 
     void Awake()
     {
-        // Wir greifen auf das Material zu. 
-        // WICHTIG: Das Material muss "Emission" aktiviert haben!
         ledMaterial = GetComponent<Renderer>().material;
+
+        ledMaterial.EnableKeyword("_EMISSION");
     }
 
     public void SetLEDColor(int r, int g, int b)
@@ -29,5 +29,6 @@ public class RobotLEDController : MonoBehaviour
         DynamicGI.SetEmissive(GetComponent<Renderer>(), targetColor);
         
         Debug.Log($"LED Simulation geändert auf: R:{r} G:{g} B:{b}");
+        
     }
 }
