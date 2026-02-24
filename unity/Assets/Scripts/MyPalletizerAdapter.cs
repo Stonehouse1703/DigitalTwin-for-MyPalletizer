@@ -1,76 +1,38 @@
 using System.Collections;
-using System.Collections.Generic;
-using UnityEngine;  
+using UnityEngine;
 
 public class MyPalletizerArticulationAdapter : MonoBehaviour
 {
-    [Header("Assign joints J1..J4 (each has ArticulationJointActuator)")]
     public ArticulationJointActuator j1;
     public ArticulationJointActuator j2;
     public ArticulationJointActuator j3;
     public ArticulationJointActuator j4;
 
-    [Header("Sequencing")]
-    public bool useQueue = true;
-
-    private readonly Queue<IEnumerator> _queue = new();
-    private Coroutine _runner;
-
-    void Awake()
+    public void MoveJointsAsync(float a1, float a2, float a3, float a4, float speed)
     {
-        if (useQueue)
-            _runner = StartCoroutine(RunQueue());
+        j1.MoveToAsync(a1, speed);
+        j2.MoveToAsync(a2, speed);
+        j3.MoveToAsync(a3, speed);
+        j4.MoveToAsync(a4, speed);
     }
 
-    // In MyPalletizerArticulationAdapter.cs
-    public void SendAngle(int joint1Based, float angleDeg, float speed)
+    public IEnumerator MoveJointsSync(float a1, float a2, float a3, float a4, float speed, float epsDeg = 0.5f)
     {
-        var j = GetJoint(joint1Based);
-        if (j == null) return;
+        // 1) Start movement
+        MoveJointsAsync(a1, a2, a3, a4, speed);
 
-        // Für Echtzeit-Streaming aus Python (Virtual Mode) 
-        // nutzen wir besser MoveToAsync, damit alle Gelenke gleichzeitig starten
-        j.MoveToAsync(angleDeg, speed);
-    }
-
-    public void Wait(float seconds)
-    {
-        if (!useQueue)
-        {
-            StartCoroutine(WaitRoutine(seconds));
-            return;
-        }
-
-        _queue.Enqueue(WaitRoutine(seconds));
-    }
-
-    public void ClearQueue() => _queue.Clear();
-
-    private IEnumerator RunQueue()
-    {
+        // 2) Wait until all reached target (best-effort)
         while (true)
         {
-            if (_queue.Count == 0) { yield return null; continue; }
-            yield return StartCoroutine(_queue.Dequeue());
-        }
-    }
+            bool done =
+                j1.IsAtTarget(a1, epsDeg) &&
+                j2.IsAtTarget(a2, epsDeg) &&
+                j3.IsAtTarget(a3, epsDeg) &&
+                j4.IsAtTarget(a4, epsDeg);
 
-    private IEnumerator WaitRoutine(float seconds)
-    {
-        float t = Mathf.Max(0f, seconds);
-        while (t > 0f)
-        {
-            t -= Time.fixedDeltaTime;
+            if (done) yield break;
+
             yield return new WaitForFixedUpdate();
         }
     }
-
-    private ArticulationJointActuator GetJoint(int joint1Based) => joint1Based switch
-    {
-        1 => j1,
-        2 => j2,
-        3 => j3,
-        4 => j4,
-        _ => null
-    };
 }

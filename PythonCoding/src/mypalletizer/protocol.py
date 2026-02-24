@@ -1,7 +1,18 @@
 ﻿def build_move_msg(j1: float, j2: float, j3: float, j4: float, speed: int) -> dict:
     return {
         "v": 1,
-        "type": "move",
+        "type": "move_joints",
+        "j1": float(j1),
+        "j2": float(j2),
+        "j3": float(j3),
+        "j4": float(j4),
+        "speed": float(speed),
+    }
+
+def sync_build_move_msg(j1: float, j2: float, j3: float, j4: float, speed: int) -> dict:
+    return {
+        "v": 1,
+        "type": "sync_move_joints",
         "j1": float(j1),
         "j2": float(j2),
         "j3": float(j3),

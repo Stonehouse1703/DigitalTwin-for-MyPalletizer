@@ -60,6 +60,9 @@ class Robot:
     def move_joints(self, j1: float, j2: float, j3: float, j4: float, speed: int = 40):
         self._impl.move_joints(j1, j2, j3, j4, speed=speed)
 
+    def sync_move_joints(self, j1: float, j2: float, j3: float, j4: float, speed: int = 40):
+        self._impl.sync_move_joints(j1, j2, j3, j4, speed=speed)
+
     def set_color(self, r: int, g: int, b: int):
         self._impl.set_color(r, g, b)
 

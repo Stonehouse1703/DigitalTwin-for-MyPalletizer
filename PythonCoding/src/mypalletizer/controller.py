@@ -5,7 +5,7 @@ from typing import Optional
 
 from pymycobot import MyPalletizer260
 
-from .protocol import build_led_msg, build_move_msg
+from .protocol import build_led_msg, build_move_msg, sync_build_move_msg
 from .errors import RobotConnectionError
 
 
@@ -14,7 +14,7 @@ class MyPalletizerController:
         "j1": (-160.0, 160.0),
         "j2": (0, 90.0),
         "j3": (-60, 0),
-        "j4": (-180.0, 180.0),
+        "j4": (-360.0, 360.0),
     }
 
     def __init__(self, mode: str, port: Optional[str], ip: str, udp_port: int, baudrate: int = 115200):
@@ -45,20 +45,36 @@ class MyPalletizerController:
         j4 = self._clamp("j4", j4)
         speed = self._clamp_speed(speed)
 
+        if self.sock:
+            self._send_udp(build_move_msg(j1, j2, j3, j4, speed))
+
         if self.mc:
             self.mc.send_angles([j1, j2, j3, j4], speed)
 
+
+    def sync_move_joints(self, j1, j2, j3, j4, speed=40):
+        j1 = self._clamp("j1", j1)
+        j2 = self._clamp("j2", j2)
+        j3 = self._clamp("j3", j3)
+        j4 = self._clamp("j4", j4)
+        speed = self._clamp_speed(speed)
+
         if self.sock:
-            self._send_udp(build_move_msg(j1, j2, j3, j4, speed))
+            self._send_udp(sync_build_move_msg(j1, j2, j3, j4, speed))
+
+        if self.mc:
+            self.mc.sync_send_angles([j1, j2, j3, j4], speed)
+
 
     def set_color(self, r, g, b):
         r, g, b = self._clamp_rgb(r, g, b)
 
+        if self.sock:
+            self._send_udp(build_led_msg(r, g, b))
+
         if self.mc:
             self.mc.set_color(r, g, b)
 
-        if self.sock:
-            self._send_udp(build_led_msg(r, g, b))
 
     def sleep(self, seconds: float):
         time.sleep(max(0.0, float(seconds)))

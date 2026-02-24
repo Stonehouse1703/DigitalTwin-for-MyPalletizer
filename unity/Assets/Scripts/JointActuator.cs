@@ -28,56 +28,40 @@ public class ArticulationJointActuator : MonoBehaviour
         _moveCo = null;
     }
 
-    /// <summary>Reads current joint angle in degrees (best effort for 1-DOF revolute).</summary>
     public float GetCurrentAngleDeg()
     {
-        // jointPosition is in radians; for a 1-DOF revolute, [0] is the position along the joint axis.
         float rad = _ab.jointPosition[0];
         return rad * Mathf.Rad2Deg;
     }
 
-    /// <summary>Move to target angle (deg). Clamps automatically to ArticulationDrive limits.</summary>
     public IEnumerator MoveTo(float targetDeg, float speed)
-{
-    var drive = GetDrive();
-
-    // 1) Aktuelle reale Gelenkposition lesen (nicht drive.target!)
-    float currentDeg = GetCurrentAngleDeg();
-
-    // Falls numerical noise / init: current in limits ziehen
-    currentDeg = Mathf.Clamp(currentDeg, drive.lowerLimit, drive.upperLimit);
-
-    // 2) Ziel clampen auf Limits aus dem ArticulationBody
-    float clampedTarget = Mathf.Clamp(targetDeg, drive.lowerLimit, drive.upperLimit);
-
-    // Optional: damit kein Sprung entsteht, initial drive.target auf aktuelle Position setzen
-    drive.target = currentDeg;
-    SetDrive(drive);
-
-    // 3) Speed -> deg/s
-    float degPerSec = Mathf.Max(minDegPerSec, Mathf.Abs(speed) * speedScale);
-
-    // 4) Monoton Richtung Ziel fahren (ohne Wrap/DeltaAngle)
-    const float eps = 0.2f; // Toleranz in Grad (anpassen)
-    while (Mathf.Abs(clampedTarget - currentDeg) > eps)
     {
-        float step = degPerSec * Time.fixedDeltaTime;
-        currentDeg = Mathf.MoveTowards(currentDeg, clampedTarget, step);
-
-        drive = GetDrive();
+        var drive = GetDrive();
+        float currentDeg = GetCurrentAngleDeg();
+        currentDeg = Mathf.Clamp(currentDeg, drive.lowerLimit, drive.upperLimit);
+        float clampedTarget = Mathf.Clamp(targetDeg, drive.lowerLimit, drive.upperLimit);
         drive.target = currentDeg;
         SetDrive(drive);
+        float degPerSec = Mathf.Max(minDegPerSec, Mathf.Abs(speed) * speedScale);
+        const float eps = 0.2f;
+        while (Mathf.Abs(clampedTarget - currentDeg) > eps)
+        {
+            float step = degPerSec * Time.fixedDeltaTime;
+            currentDeg = Mathf.MoveTowards(currentDeg, clampedTarget, step);
 
-        yield return new WaitForFixedUpdate();
+            drive = GetDrive();
+            drive.target = currentDeg;
+            SetDrive(drive);
+
+            yield return new WaitForFixedUpdate();
+        }
+
+        // Final snap
+        drive = GetDrive();
+        drive.target = clampedTarget;
+        SetDrive(drive);
     }
 
-    // Final snap
-    drive = GetDrive();
-    drive.target = clampedTarget;
-    SetDrive(drive);
-}
-
-    /// <summary>Starts movement immediately (non-blocking). Adapter/Queue kann stattdessen IEnumerator nutzen.</summary>
     public void MoveToAsync(float targetDeg, float speed)
     {
         Stop();
@@ -86,12 +70,17 @@ public class ArticulationJointActuator : MonoBehaviour
 
     private ArticulationDrive GetDrive()
     {
-        // For revolute, XDrive is typically used.
         return _ab.xDrive;
     }
 
     private void SetDrive(ArticulationDrive drive)
     {
         _ab.xDrive = drive;
+    }
+    
+    public bool IsAtTarget(float targetDeg, float epsDeg = 0.5f)
+    {
+        float cur = GetCurrentAngleDeg();
+        return Mathf.Abs(targetDeg - cur) <= epsDeg;
     }
 }

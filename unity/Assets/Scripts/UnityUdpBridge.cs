@@ -10,20 +10,20 @@ public class UnityUdpBridge : MonoBehaviour
 {
     [Header("Networking")]
     public int port = 5005;
-    
+
     [Header("LED Controller")]
-    public RobotLEDController ledController;  // im Inspector zuweisen
+    public RobotLEDController ledController;
 
     [Header("Robot Reference")]
     public MyPalletizerArticulationAdapter adapter;
 
     private UdpClient _udpClient;
     private Thread _receiveThread;
-    
+    private volatile bool _running = true;
+
     private readonly Queue<RobotCommand> _commandQueue = new();
     private readonly object _lock = new object();
 
-    // 1. Die Datenstruktur für das JSON-Parsing
     [Serializable]
     public class RobotData
     {
@@ -33,7 +33,6 @@ public class UnityUdpBridge : MonoBehaviour
         public int r, g, b;
     }
 
-    // 2. Die interne Struktur für die Warteschlange (HIER lagen die Fehler)
     private struct RobotCommand
     {
         public string type;
@@ -45,33 +44,36 @@ public class UnityUdpBridge : MonoBehaviour
     void Start()
     {
         if (adapter == null) adapter = GetComponent<MyPalletizerArticulationAdapter>();
-        
+        if (ledController == null) ledController = FindFirstObjectByType<RobotLEDController>();
+
         _receiveThread = new Thread(ReceiveData) { IsBackground = true };
         _receiveThread.Start();
+
+        StartCoroutine(CommandRunner());
+
         Debug.Log($"UDP Bridge gestartet auf Port {port}");
-        
-        if (ledController == null)
-            ledController = FindFirstObjectByType<RobotLEDController>();
     }
 
     private void ReceiveData()
     {
         _udpClient = new UdpClient(port);
-        while (true)
+
+        while (_running)
         {
             try
             {
                 IPEndPoint anyIP = new IPEndPoint(IPAddress.Any, 0);
-                byte[] data = _udpClient.Receive(ref anyIP);
+                byte[] data = _udpClient.Receive(ref anyIP); // blockiert
                 string text = Encoding.UTF8.GetString(data);
-                Debug.Log("UDP RAW: " + text);
 
-                RobotData robotData = JsonUtility.FromJson<RobotData>(text);
+                var robotData = JsonUtility.FromJson<RobotData>(text);
+                if (robotData == null || string.IsNullOrWhiteSpace(robotData.type))
+                    continue;
 
                 lock (_lock)
                 {
-                    // Wir übertragen alle Werte in das Command-Objekt
-                    _commandQueue.Enqueue(new RobotCommand {
+                    _commandQueue.Enqueue(new RobotCommand
+                    {
                         type = robotData.type,
                         j1 = robotData.j1,
                         j2 = robotData.j2,
@@ -82,53 +84,73 @@ public class UnityUdpBridge : MonoBehaviour
                         g = robotData.g,
                         b = robotData.b
                     });
+                    Debug.Log("Enqueued command: " + robotData.type);
                 }
+            }
+            catch (SocketException)
+            {
+                // tritt beim Close() auf -> ok beim Shutdown
             }
             catch (Exception e)
             {
                 Debug.LogWarning("UDP Receive Error: " + e.Message);
             }
-
         }
     }
 
-    void Update()
+    private System.Collections.IEnumerator CommandRunner()
     {
-        lock (_lock)
+        while (_running)
         {
-            while (_commandQueue.Count > 0)
+            RobotCommand cmd;
+            bool hasCmd = false;
+
+            lock (_lock)
             {
-                var cmd = _commandQueue.Dequeue();
-                
-                // Entscheidung: LED oder Bewegung?
-                if (cmd.type == "led")
+                if (_commandQueue.Count > 0)
                 {
-                    if (cmd.type == "led")
-                    {
-                        if (ledController != null)
-                            ledController.SetLEDColor(cmd.r, cmd.g, cmd.b);
-                        else
-                            Debug.LogWarning("No RobotLEDController found in scene!");
-                    }
+                    cmd = _commandQueue.Dequeue();
+                    hasCmd = true;
                 }
-                else if (cmd.type == "move")
-                {
-                    adapter.SendAngle(1, cmd.j1, cmd.speed);
-                    adapter.SendAngle(2, cmd.j2, cmd.speed);
-                    adapter.SendAngle(3, cmd.j3, cmd.speed);
-                    adapter.SendAngle(4, cmd.j4, cmd.speed);
-                }
-                else
-                {
-                    Debug.LogWarning($"Unknown command type: '{cmd.type}'");
-                }
+                else cmd = default;
             }
+
+            if (!hasCmd)
+            {
+                yield return null;
+                continue;
+            }
+
+            Debug.Log("Received command: " + cmd.type + ", j1=" + cmd.j1 + ", j2=" + cmd.j2 + ", j3=" + cmd.j3 + ", j4=" + cmd.j4 + ", speed=" + cmd.speed + ", r=" + cmd.r + ", g=" + cmd.g + ", b=" + cmd.b);
+            switch (cmd.type)
+            {
+                case "led":
+                    if (ledController != null) ledController.SetLEDColor(cmd.r, cmd.g, cmd.b);
+                    else Debug.LogWarning("No RobotLEDController found in scene!");
+                    break;
+
+                case "move_joints":
+                    // fire & forget
+                    adapter.MoveJointsAsync(cmd.j1, cmd.j2, cmd.j3, cmd.j4, cmd.speed);
+                    break;
+
+                case "sync_move_joints":
+                    // blockiert die Queue bis fertig
+                    yield return adapter.MoveJointsSync(cmd.j1, cmd.j2, cmd.j3, cmd.j4, cmd.speed);
+                    break;
+
+                default:
+                    Debug.LogWarning($"Unknown command type: '{cmd.type}'");
+                    break;
+            }
+            Debug.Log("🏁 Done with command: " + cmd.type);
         }
     }
 
     private void OnApplicationQuit()
     {
-        _udpClient?.Close();
-        _receiveThread?.Abort();
+        _running = false;
+        _udpClient?.Close();       // löst Receive() auf -> Thread endet
+        _receiveThread?.Join(200); // kurz warten statt Abort
     }
 }
